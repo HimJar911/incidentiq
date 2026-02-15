@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+*.egg
+
+# Environment
+.env
+.env.local
+*.env
+
+# AWS CDK
+infra/cdk.out/
+infra/.cdk.staging/
+
+# Node / React dashboard
+dashboard/node_modules/
+dashboard/build/
+dashboard/.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Secrets — never commit these
+*.pem
+*.key
+secrets/
+
+# Test artifacts
+.pytest_cache/
+.coverage
+htmlcov/

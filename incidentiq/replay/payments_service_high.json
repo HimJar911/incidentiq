@@ -1,0 +1,32 @@
+{
+  "AlarmName": "incidentiq-demo-payments-error-rate",
+  "AlarmDescription": "payments-service: 5xx error rate exceeded 5% threshold",
+  "AWSAccountId": "123456789012",
+  "NewStateValue": "ALARM",
+  "NewStateReason": "Threshold Crossed: 1 datapoint [8.5 (14/02/26 02:00:00)] was greater than the threshold (5.0). The most recent datapoint: 8.5.",
+  "OldStateValue": "OK",
+  "StateChangeTime": "2026-02-14T02:00:15.000+0000",
+  "Region": "US East (N. Virginia)",
+  "AlarmArn": "arn:aws:cloudwatch:us-east-1:123456789012:alarm:incidentiq-demo-payments-error-rate",
+  "Trigger": {
+    "MetricName": "ErrorRate",
+    "Namespace": "IncidentIQ/Demo",
+    "Dimensions": [
+      { "name": "Service", "value": "payments-service" },
+      { "name": "Environment", "value": "production" }
+    ],
+    "Period": 60,
+    "Threshold": 5.0,
+    "ComparisonOperator": "GreaterThanThreshold",
+    "TreatMissingData": "notBreaching",
+    "EvaluateLowSampleCountPercentile": ""
+  },
+  "_demo_context": {
+    "story": "bob.chen deployed PR #2847 (payment gateway timeout config change) at 01:45 UTC. Error rate spiked at 02:00 UTC. payments-service and auth-service affected. ~12,000 users impacted.",
+    "expected_severity": "HIGH",
+    "expected_blast_radius": ["payments-service", "auth-service"],
+    "expected_suspect_commit": "a3f8c21d",
+    "expected_suspect_author": "bob.chen",
+    "expected_suspect_pr": 2847
+  }
+}
