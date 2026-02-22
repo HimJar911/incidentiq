@@ -126,7 +126,7 @@ Respond with ONLY the JSON object."""
     response = bedrock.invoke_model(
         modelId=NOVA_LITE_MODEL,
         body=json.dumps({
-            "messages": [{"role": "user", "content": user_message}],
+            "messages": [{"role": "user", "content": [{"text": user_message}]}],
             "system": [{"text": system_prompt}],
             "inferenceConfig": {
                 "maxTokens": 512,

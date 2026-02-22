@@ -97,14 +97,17 @@ def main():
     def check_nova():
         bedrock = boto3.client("bedrock-runtime", region_name=AWS_REGION)
         response = bedrock.invoke_model(
-            modelId=NOVA_LITE_MODEL,
-            body=json.dumps({
-                "messages": [{"role": "user", "content": "Reply with exactly: INCIDENTIQ_READY"}],
-                "inferenceConfig": {"maxTokens": 16, "temperature": 0.0},
-            }),
-            contentType="application/json",
-            accept="application/json",
-        )
+    modelId=NOVA_LITE_MODEL,
+    body=json.dumps({
+        "messages": [
+            {"role": "user", "content": [{"text": "Reply with exactly: INCIDENTIQ_READY"}]}
+        ],
+        "inferenceConfig": {"maxTokens": 16, "temperature": 0.0},
+    }),
+    contentType="application/json",
+    accept="application/json",
+)
+
         body = json.loads(response["body"].read())
         reply = body["output"]["message"]["content"][0]["text"].strip()
         return f"Nova 2 Lite replied: '{reply}'"

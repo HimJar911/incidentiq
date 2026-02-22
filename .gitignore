@@ -38,3 +38,14 @@ secrets/
 .pytest_cache/
 .coverage
 htmlcov/
+
+# CDK generated config and outputs
+infra/cdk.context.json
+infra/cdk-outputs-*.json
+
+# Dashboard / Node artifacts
+dashboard/node_modules/
+dashboard/dist/
+dashboard/build/
+dashboard/.env
+

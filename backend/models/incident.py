@@ -9,6 +9,8 @@ import uuid
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
+from decimal import Decimal
+from typing import Any
 
 import boto3
 from boto3.dynamodb.conditions import Key
@@ -16,6 +18,7 @@ from boto3.dynamodb.conditions import Key
 # ─────────────────────────────────────────────────────────────────────────────
 # Enums
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class IncidentStatus(str, Enum):
     INGESTED = "ingested"
@@ -44,16 +47,41 @@ class AlertSource(str, Enum):
 
 TABLE_NAME = os.environ.get("INCIDENTS_TABLE", "incidentiq-incidents")
 
+
 def _get_table():
     dynamodb = boto3.resource("dynamodb", region_name=os.environ.get("AWS_REGION", "us-east-1"))
     return dynamodb.Table(TABLE_NAME)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _convert_floats_to_decimal(obj: Any) -> Any:
+    """
+    Recursively convert Python floats in a structure to Decimal objects,
+    because DynamoDB (via boto3) requires Decimal for non-int numeric types.
+    """
+    if isinstance(obj, float):
+        return Decimal(str(obj))
+    if isinstance(obj, dict):
+        return {k: _convert_floats_to_decimal(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_convert_floats_to_decimal(v) for v in obj]
+    return obj
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Incident CRUD helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
-def create_incident(alert_payload: dict, alert_source: str = "CloudWatch") -> str:
+
+def create_incident(alert_payload: dict, alert_source: str = AlertSource.CLOUDWATCH.value) -> str:
     """
     Create a new incident record. Called by the ingest Lambda.
     Returns the incident_id.
@@ -74,12 +102,17 @@ def create_incident(alert_payload: dict, alert_source: str = "CloudWatch") -> st
         "suspect_commits": [],
         "runbook_hits": [],
         "slack_message_id": None,
+        "estimated_users_affected": 0,
         "actions_log": [],
         "resolved_at": None,
         "postmortem_s3_path": None,
         "replay_blob_s3_path": None,
     }
 
+    # Convert floats to Decimal before sending to DynamoDB
+    item = _convert_floats_to_decimal(item)
+
+    # Persist
     _get_table().put_item(Item=item)
     return incident_id
 
@@ -100,6 +133,9 @@ def update_incident(incident_id: str, updates: dict) -> None:
     """
     if not updates:
         return
+
+    # Convert any floats in update values to Decimal
+    updates = _convert_floats_to_decimal(updates)
 
     # Build UpdateExpression dynamically
     set_expressions = []
@@ -126,6 +162,9 @@ def append_action_log(incident_id: str, agent: str, action_type: str, details: d
     Append an entry to the actions_log list.
     This is the append-only audit trail that feeds the Postmortem Agent.
     """
+    # Convert floats inside details to Decimal
+    details = _convert_floats_to_decimal(details)
+
     entry = {
         "ts": _now(),
         "agent": agent,
@@ -177,11 +216,3 @@ def list_recent_incidents(limit: int = 20) -> list[dict]:
     )
     items = response.get("Items", [])
     return sorted(items, key=lambda x: x.get("created_at", ""), reverse=True)[:limit]
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Helpers
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()

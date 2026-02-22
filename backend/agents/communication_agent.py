@@ -56,7 +56,10 @@ def run_communication(incident_id: str) -> dict:
     message_id = _post_to_slack(brief, incident_id, incident, estimated_users)
 
     # Update DynamoDB
-    update_incident(incident_id, {"slack_message_id": message_id or "posted"})
+    update_incident(incident_id, {
+    "slack_message_id": message_id or "posted",
+    "estimated_users_affected": estimated_users,
+})
 
     append_action_log(incident_id, "communication_agent", "slack_brief_posted", {
         "channel": SLACK_CHANNEL,
@@ -138,7 +141,7 @@ Keep it under 300 words. Make it scannable."""
     response = bedrock.invoke_model(
         modelId=NOVA_LITE_MODEL,
         body=json.dumps({
-            "messages": [{"role": "user", "content": user_message}],
+            "messages": [{"role": "user", "content": [{"text": user_message}]}],
             "system": [{"text": system_prompt}],
             "inferenceConfig": {
                 "maxTokens": 512,

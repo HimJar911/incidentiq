@@ -19,12 +19,17 @@ from datetime import datetime, timezone
 import boto3
 
 from backend.models.incident import append_action_log, get_incident, update_incident
+from decimal import Decimal
+
+def _decimal_serializer(obj):
+    if isinstance(obj, Decimal):
+        return float(obj)
+    raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
 
 logger = logging.getLogger(__name__)
 
 NOVA_LITE_MODEL = "us.amazon.nova-lite-v1:0"
 AWS_REGION = os.environ.get("AWS_REGION", "us-east-1")
-S3_BUCKET = os.environ.get("S3_BUCKET", "")
 
 
 def run_postmortem(incident_id: str) -> dict:
@@ -105,13 +110,13 @@ INCIDENT DETAILS:
 - Triage Summary: {triage_summary}
 
 SUSPECT COMMITS (from automated investigation):
-{json.dumps(suspect_commits, indent=2, default=str)}
+{json.dumps(suspect_commits, indent=2, default=_decimal_serializer)}
 
 RUNBOOK SECTIONS REFERENCED:
-{json.dumps([{'id': r.get('runbook_id'), 'section': r.get('section'), 'relevance': r.get('relevance')} for r in runbook_hits], indent=2)}
+{json.dumps([{'id': r.get('runbook_id'), 'section': r.get('section'), 'relevance': r.get('relevance')} for r in runbook_hits], indent=2, default=_decimal_serializer)}
 
 FULL AUDIT TRAIL (chronological agent actions):
-{json.dumps(timeline_entries, indent=2, default=str)}
+{json.dumps(timeline_entries, indent=2, default=_decimal_serializer)}
 
 Write the complete postmortem document. 
 - Summary: 2-3 sentences, what happened and impact
@@ -126,7 +131,7 @@ Write the complete postmortem document.
     response = bedrock.invoke_model(
         modelId=NOVA_LITE_MODEL,
         body=json.dumps({
-            "messages": [{"role": "user", "content": user_message}],
+            "messages": [{"role": "user", "content": [{"text": user_message}]}],
             "system": [{"text": system_prompt}],
             "inferenceConfig": {
                 "maxTokens": 2048,    # Long-form output
@@ -154,6 +159,7 @@ Write the complete postmortem document.
 
 def _upload_to_s3(incident_id: str, content: str) -> str:
     """Upload postmortem markdown to S3. Returns S3 URI."""
+    S3_BUCKET = os.environ.get("S3_BUCKET", "")
     if not S3_BUCKET:
         logger.warning("[postmortem_agent] S3_BUCKET not set — skipping upload")
         return f"local://{incident_id}_postmortem.md"

@@ -52,7 +52,7 @@ def upload_runbooks():
             Key=key,
             Body=content.encode("utf-8"),
             ContentType="text/markdown",
-            Metadata={k: str(v) for k, v in metadata.items()},
+            Metadata={k: str(v).encode('ascii', 'ignore').decode('ascii') for k, v in metadata.items()},
         )
         print(f"  ✅ {runbook_file.name} → {key}")
         uploaded += 1
