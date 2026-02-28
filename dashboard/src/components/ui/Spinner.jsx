@@ -1,6 +1,6 @@
 // ─── Spinner ───────────────────────────────────────────────────────────────────
 
-import T from "../styles/tokens";
+import T from "../../styles/tokens";
 
 export function Spinner({ size = 16, color }) {
     return (

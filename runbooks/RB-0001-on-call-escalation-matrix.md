@@ -6,14 +6,16 @@ severity_scope: HIGH, MED, LOW
 tags: [escalation, on-call, pagerduty, contacts, war-room]
 first_action_step: Page the on-call SRE via PagerDuty and open a war room in #incidents.
 ---
-
+<!-- iq:runbook_id=RB-0001 | title=On-Call Escalation Matrix | first_action_step=Page the on-call SRE via PagerDuty and open a war room in #incidents. -->
 # On-Call Escalation Matrix
 
 ## Overview
+<!-- iq:runbook_id=RB-0001 | title=On-Call Escalation Matrix | first_action_step=Page the on-call SRE via PagerDuty and open a war room in #incidents. -->
 This runbook defines who to contact, when, and how during a production incident.
 All incidents should follow this escalation path regardless of root cause.
 
 ## Severity Definitions
+<!-- iq:runbook_id=RB-0001 | title=On-Call Escalation Matrix | first_action_step=Page the on-call SRE via PagerDuty and open a war room in #incidents. -->
 | Severity | Criteria | Response Time |
 |----------|----------|---------------|
 | HIGH | Complete outage, data loss, payment failures, >10k users | Immediate — page now |
@@ -21,6 +23,7 @@ All incidents should follow this escalation path regardless of root cause.
 | LOW | Minor degradation, <1k users, non-critical service | < 30 minutes |
 
 ## Escalation Path
+<!-- iq:runbook_id=RB-0001 | title=On-Call Escalation Matrix | first_action_step=Page the on-call SRE via PagerDuty and open a war room in #incidents. -->
 
 ### Immediate (0-5 minutes)
 1. **Page on-call SRE** via PagerDuty — rotation: `sre-oncall`
@@ -49,6 +52,7 @@ All incidents should follow this escalation path regardless of root cause.
 11. **All-hands war room** — pull in additional engineers
 
 ## Contact Reference
+<!-- iq:runbook_id=RB-0001 | title=On-Call Escalation Matrix | first_action_step=Page the on-call SRE via PagerDuty and open a war room in #incidents. -->
 | Role | PagerDuty Rotation | Slack Handle |
 |------|--------------------|--------------|
 | On-call SRE | sre-oncall | @oncall-sre |
@@ -58,6 +62,7 @@ All incidents should follow this escalation path regardless of root cause.
 | VP Engineering | vp-engineering | @vp-eng |
 
 ## War Room Protocol
+<!-- iq:runbook_id=RB-0001 | title=On-Call Escalation Matrix | first_action_step=Page the on-call SRE via PagerDuty and open a war room in #incidents. -->
 1. Pin the incident summary message in `#incidents`
 2. All updates go in the thread — keep the channel clean
 3. Assign roles: **Incident Commander**, **Comms Lead**, **Technical Lead**
@@ -65,6 +70,7 @@ All incidents should follow this escalation path regardless of root cause.
 5. Call the all-clear explicitly when resolved
 
 ## Post-Incident
+<!-- iq:runbook_id=RB-0001 | title=On-Call Escalation Matrix | first_action_step=Page the on-call SRE via PagerDuty and open a war room in #incidents. -->
 - File postmortem within 24 hours for HIGH severity
 - File postmortem within 72 hours for MED severity
 - Update this escalation matrix if contacts have changed

@@ -1,7 +1,7 @@
 // ─── Panel ─────────────────────────────────────────────────────────────────────
 // Neutral card container. No accent borders — color lives inside content only.
 
-import T from "../styles/tokens";
+import T from "../../styles/tokens";
 
 export function Panel({ title, topRight, children, style = {} }) {
     return (

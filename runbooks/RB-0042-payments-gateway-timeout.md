@@ -6,20 +6,23 @@ severity_scope: HIGH, MED
 tags: [payments, gateway, timeout, latency]
 first_action_step: Check payment gateway config for recent changes and roll back if needed.
 ---
-
+<!-- iq:runbook_id=RB-0042 | title=Payment Gateway Timeout Recovery | first_action_step=Check payment gateway config for recent changes and roll back if needed. -->
 # Payment Gateway Timeout Recovery
 
 ## Overview
+<!-- iq:runbook_id=RB-0042 | title=Payment Gateway Timeout Recovery | first_action_step=Check payment gateway config for recent changes and roll back if needed. -->
 This runbook covers recovery procedures when the payments-service reports elevated
 timeout errors or latency spikes from the payment gateway integration.
 
 ## Detection Signals
+<!-- iq:runbook_id=RB-0042 | title=Payment Gateway Timeout Recovery | first_action_step=Check payment gateway config for recent changes and roll back if needed. -->
 - CloudWatch alarm: `payments-service ErrorRate > 5%`
 - Dashboard: Payment success rate drops below 95%
 - Spike in 504/503 responses from `/api/payments/*` endpoints
 - Datadog monitor: `payments.gateway.timeout.count > 10/min`
 
 ## Immediate Actions (First 5 Minutes)
+<!-- iq:runbook_id=RB-0042 | title=Payment Gateway Timeout Recovery | first_action_step=Check payment gateway config for recent changes and roll back if needed. -->
 
 1. **Check recent config changes**
    - Review deploy dashboard for changes to `services/payments/` in the last 6 hours
@@ -41,11 +44,13 @@ timeout errors or latency spikes from the payment gateway integration.
    - If > 0, restart the service pods to reset pool state
 
 ## Escalation
+<!-- iq:runbook_id=RB-0042 | title=Payment Gateway Timeout Recovery | first_action_step=Check payment gateway config for recent changes and roll back if needed. -->
 - Page **payments-team on-call lead** immediately for HIGH severity
 - Notify **VP Engineering** if duration > 15 minutes
 - Open a war room in **#incidents** Slack channel
 
 ## Rollback Procedure
+<!-- iq:runbook_id=RB-0042 | title=Payment Gateway Timeout Recovery | first_action_step=Check payment gateway config for recent changes and roll back if needed. -->
 ```bash
 # Get last known good deployment
 aws ecs describe-services --cluster production --services payments-service
@@ -59,6 +64,7 @@ aws ecs update-service \
 ```
 
 ## Verification
+<!-- iq:runbook_id=RB-0042 | title=Payment Gateway Timeout Recovery | first_action_step=Check payment gateway config for recent changes and roll back if needed. -->
 After remediation, confirm:
 - Error rate returns to < 1%
 - P99 latency returns to < 500ms
@@ -66,6 +72,7 @@ After remediation, confirm:
 - No pending retry queue buildup
 
 ## Post-Incident
+<!-- iq:runbook_id=RB-0042 | title=Payment Gateway Timeout Recovery | first_action_step=Check payment gateway config for recent changes and roll back if needed. -->
 - File postmortem within 24 hours
 - Update gateway timeout values in config if they contributed
 - Add regression test for the failure mode

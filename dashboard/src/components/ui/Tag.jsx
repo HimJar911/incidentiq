@@ -1,6 +1,6 @@
 // ─── Tag ───────────────────────────────────────────────────────────────────────
 
-import T from "../styles/tokens";
+import T from "../../styles/tokens";
 
 export function Tag({ children }) {
     return (

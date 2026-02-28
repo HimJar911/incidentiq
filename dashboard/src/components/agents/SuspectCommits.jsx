@@ -13,7 +13,7 @@ export function CommitCard({ commit }) {
             borderRadius: 6, alignItems: "center",
         }}>
             <span style={{ fontSize: 12, fontFamily: T.fonts.mono, color: T.severity.MED.fg, fontWeight: 700 }}>
-                {commit.sha?.slice(0, 7) ?? "???????"}
+                {commit.commit_hash ?? commit.sha?.slice(0, 7) ?? "???????"}
             </span>
             <div>
                 <div style={{ fontSize: 12, color: T.text.primary, marginBottom: 3 }}>{commit.message}</div>
@@ -37,7 +37,7 @@ export function SuspectCommits({ commits = [] }) {
             topRight={<span style={{ fontSize: 10, fontFamily: T.fonts.mono, color: T.text.disabled }}>{commits.length} flagged</span>}
         >
             <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
-                {commits.map((c, i) => <CommitCard key={c.sha ?? i} commit={c} />)}
+                {commits.map((c, i) => <CommitCard key={c.commit_hash ?? c.sha ?? i} commit={c} />)}
             </div>
         </Panel>
     );

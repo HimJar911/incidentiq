@@ -6,14 +6,16 @@ severity_scope: HIGH, MED
 tags: [database, connection-pool, rds, postgres, exhaustion]
 first_action_step: Check RDS connection count and identify which service is exhausting the pool.
 ---
-
+<!-- iq:runbook_id=RB-0055 | title=Database Connection Pool Exhaustion | first_action_step=Check RDS connection count and identify which service is exhausting the pool. -->
 # Database Connection Pool Exhaustion
 
 ## Overview
+<!-- iq:runbook_id=RB-0055 | title=Database Connection Pool Exhaustion | first_action_step=Check RDS connection count and identify which service is exhausting the pool. -->
 This runbook covers recovery when a service's database connection pool is
 exhausted, causing request timeouts and cascading failures across dependent services.
 
 ## Detection Signals
+<!-- iq:runbook_id=RB-0055 | title=Database Connection Pool Exhaustion | first_action_step=Check RDS connection count and identify which service is exhausting the pool. -->
 - CloudWatch alarm: `DatabaseConnections > 80%` of max_connections
 - Service errors: `connection pool exhausted` or `too many connections`
 - RDS metric: `DatabaseConnections` near instance limit
@@ -21,6 +23,7 @@ exhausted, causing request timeouts and cascading failures across dependent serv
 - Increased request latency with database query timeouts
 
 ## Immediate Actions (First 5 Minutes)
+<!-- iq:runbook_id=RB-0055 | title=Database Connection Pool Exhaustion | first_action_step=Check RDS connection count and identify which service is exhausting the pool. -->
 
 1. **Identify the exhausting service**
    - RDS Performance Insights: check active connections by client
@@ -59,10 +62,12 @@ exhausted, causing request timeouts and cascading failures across dependent serv
    - Set feature flag: `DB_USE_PGBOUNCER=true`
 
 ## Escalation
+<!-- iq:runbook_id=RB-0055 | title=Database Connection Pool Exhaustion | first_action_step=Check RDS connection count and identify which service is exhausting the pool. -->
 - Page **database-team on-call** if connection count does not drop within 10 minutes
 - Consider RDS instance upgrade if max_connections is consistently near limit
 
 ## Connection Pool Settings Reference
+<!-- iq:runbook_id=RB-0055 | title=Database Connection Pool Exhaustion | first_action_step=Check RDS connection count and identify which service is exhausting the pool. -->
 | Service | Pool Size | Max Overflow | Pool Timeout |
 |---------|-----------|--------------|--------------|
 | payments-service | 20 | 10 | 30s |
@@ -70,12 +75,14 @@ exhausted, causing request timeouts and cascading failures across dependent serv
 | user-service | 25 | 10 | 30s |
 
 ## Verification
+<!-- iq:runbook_id=RB-0055 | title=Database Connection Pool Exhaustion | first_action_step=Check RDS connection count and identify which service is exhausting the pool. -->
 - `DatabaseConnections` metric drops below 60% of limit
 - Service error rate returns to baseline
 - No `connection pool exhausted` errors in logs
 - Query latency P99 within normal range
 
 ## Post-Incident
+<!-- iq:runbook_id=RB-0055 | title=Database Connection Pool Exhaustion | first_action_step=Check RDS connection count and identify which service is exhausting the pool. -->
 - Review connection pool sizing for affected service
 - Add connection leak detection to CI pipeline
 - Consider read replica for read-heavy workloads

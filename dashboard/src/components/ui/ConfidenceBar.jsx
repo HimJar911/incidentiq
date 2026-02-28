@@ -1,6 +1,6 @@
 // ─── ConfidenceBar ─────────────────────────────────────────────────────────────
 
-import T from "../styles/tokens";
+import T from "../../styles/tokens";
 
 export function ConfidenceBar({ label, value, color }) {
     return (

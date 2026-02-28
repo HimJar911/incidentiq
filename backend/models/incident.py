@@ -2,6 +2,7 @@
 Incident data model — the schema every agent reads and writes.
 All agents get the incident_id and interact with DynamoDB via these helpers.
 """
+
 from __future__ import annotations
 
 import os
@@ -49,7 +50,9 @@ TABLE_NAME = os.environ.get("INCIDENTS_TABLE", "incidentiq-incidents")
 
 
 def _get_table():
-    dynamodb = boto3.resource("dynamodb", region_name=os.environ.get("AWS_REGION", "us-east-1"))
+    dynamodb = boto3.resource(
+        "dynamodb", region_name=os.environ.get("AWS_REGION", "us-east-1")
+    )
     return dynamodb.Table(TABLE_NAME)
 
 
@@ -81,10 +84,19 @@ def _convert_floats_to_decimal(obj: Any) -> Any:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def create_incident(alert_payload: dict, alert_source: str = AlertSource.CLOUDWATCH.value) -> str:
+def create_incident(
+    alert_payload: dict,
+    alert_source: str = "CloudWatch",
+    repo_id: str = None,
+    slack_webhook_url: str = None,
+) -> str:
     """
-    Create a new incident record. Called by the ingest Lambda.
+    Create a new incident record.
     Returns the incident_id.
+
+    New fields vs V1:
+      repo_id           — which connected repo triggered this (e.g. "HimJar911/payments-service")
+      slack_webhook_url — per-repo Slack webhook (overrides global secret)
     """
     incident_id = str(uuid.uuid4())
     now = _now()
@@ -94,8 +106,8 @@ def create_incident(alert_payload: dict, alert_source: str = AlertSource.CLOUDWA
         "status": IncidentStatus.INGESTED.value,
         "created_at": now,
         "alert_source": alert_source,
-        "alert_payload": alert_payload,         # Store inline for small payloads
-        "alert_payload_s3_path": None,          # Populated for large payloads
+        "alert_payload": alert_payload,
+        "alert_payload_s3_path": None,
         "severity": None,
         "blast_radius": [],
         "triage_summary_snippet": None,
@@ -107,12 +119,12 @@ def create_incident(alert_payload: dict, alert_source: str = AlertSource.CLOUDWA
         "resolved_at": None,
         "postmortem_s3_path": None,
         "replay_blob_s3_path": None,
+        # New SaaS fields
+        "repo_id": repo_id,
+        "slack_webhook_url": slack_webhook_url,
     }
 
-    # Convert floats to Decimal before sending to DynamoDB
     item = _convert_floats_to_decimal(item)
-
-    # Persist
     _get_table().put_item(Item=item)
     return incident_id
 
@@ -157,7 +169,9 @@ def update_incident(incident_id: str, updates: dict) -> None:
     )
 
 
-def append_action_log(incident_id: str, agent: str, action_type: str, details: dict) -> None:
+def append_action_log(
+    incident_id: str, agent: str, action_type: str, details: dict
+) -> None:
     """
     Append an entry to the actions_log list.
     This is the append-only audit trail that feeds the Postmortem Agent.
@@ -196,10 +210,13 @@ def set_status(incident_id: str, status: IncidentStatus) -> None:
 def resolve_incident(incident_id: str) -> None:
     """Mark incident as resolved. Triggers Postmortem Agent."""
     now = _now()
-    update_incident(incident_id, {
-        "status": IncidentStatus.RESOLVED.value,
-        "resolved_at": now,
-    })
+    update_incident(
+        incident_id,
+        {
+            "status": IncidentStatus.RESOLVED.value,
+            "resolved_at": now,
+        },
+    )
     append_action_log(
         incident_id,
         agent="api",

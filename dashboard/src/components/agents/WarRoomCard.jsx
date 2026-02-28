@@ -41,7 +41,7 @@ export function WarRoomCard({ incident }) {
                         Slack brief dispatched
                         {slackId && (
                             <span style={{ fontFamily: T.fonts.mono, color: T.text.muted, marginLeft: 6 }}>
-                                · {slackId.split("/").pop()?.slice(1, 11)}
+                                · #incidents
                             </span>
                         )}
                     </div>

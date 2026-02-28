@@ -1,11 +1,16 @@
 """
-Triage Agent — Agent 1
-Reads the CloudWatch alarm payload, queries metrics, and uses Nova 2 Lite
-to determine severity + blast radius.
+Triage Agent — Agent 1 (V2 — GitHub push trigger)
 
-Input:  incident.alert_payload (CloudWatch alarm JSON)
-Output: severity, blast_radius, triage_summary_snippet → written to DynamoDB
+Changes from V1:
+- Handles GitHub push payloads (not just CloudWatch alarms)
+- Extracts commit info directly from alert_payload (no CloudWatch needed)
+- Severity reasoning based on: files changed, commit message, repo context
+- Still works with CloudWatch/Replay payloads as fallback
+
+Input:  incident.alert_payload (GitHub push event OR CloudWatch alarm)
+Output: severity, blast_radius, triage_summary_snippet → DynamoDB
 """
+
 from __future__ import annotations
 
 import json
@@ -23,116 +28,142 @@ AWS_REGION = os.environ.get("AWS_REGION", "us-east-1")
 
 
 def run_triage(incident_id: str) -> dict:
-    """
-    Main entry point for Triage Agent.
-    Returns the triage result dict (also written to DynamoDB).
-    """
+    """Main entry point. Returns triage result dict."""
     logger.info(f"[triage_agent] Starting triage for {incident_id}")
     append_action_log(incident_id, "triage_agent", "agent_start", {})
 
     incident = get_incident(incident_id)
     alert_payload = incident.get("alert_payload", {})
+    alert_source = incident.get("alert_source", "CloudWatch")
 
-    # Pull metric context from CloudWatch
-    metric_context = _query_cloudwatch_metrics(alert_payload)
+    # Build context depending on trigger source
+    if alert_source == "GitHub":
+        context = _build_github_context(alert_payload)
+    else:
+        context = _build_cloudwatch_context(alert_payload)
 
-    # Call Nova 2 Lite to reason about severity + blast radius
-    triage_result = _call_nova_triage(alert_payload, metric_context)
+    # Call Nova
+    triage_result = _call_nova_triage(alert_payload, context, alert_source)
 
-    # Write outputs back to DynamoDB
-    update_incident(incident_id, {
-        "severity": triage_result["severity"],
-        "blast_radius": triage_result["blast_radius"],
-        "triage_summary_snippet": triage_result["triage_summary_snippet"],
-    })
+    # Write to DynamoDB
+    update_incident(
+        incident_id,
+        {
+            "severity": triage_result["severity"],
+            "blast_radius": triage_result["blast_radius"],
+            "triage_summary_snippet": triage_result["triage_summary_snippet"],
+        },
+    )
 
-    append_action_log(incident_id, "triage_agent", "triage_complete", {
-        "severity": triage_result["severity"],
-        "blast_radius": triage_result["blast_radius"],
-    })
+    append_action_log(
+        incident_id,
+        "triage_agent",
+        "triage_complete",
+        {
+            "severity": triage_result["severity"],
+            "blast_radius": triage_result["blast_radius"],
+        },
+    )
 
-    logger.info(f"[triage_agent] Complete — severity={triage_result['severity']}, "
-                f"blast_radius={triage_result['blast_radius']}")
-
+    logger.info(
+        f"[triage_agent] Complete — severity={triage_result['severity']}, "
+        f"blast_radius={triage_result['blast_radius']}"
+    )
     return triage_result
 
 
-def _query_cloudwatch_metrics(alert_payload: dict) -> dict:
-    """
-    Query CloudWatch for metric context around the alarm.
-    Returns a dict of relevant metrics for Nova to reason about.
-    """
-    try:
-        cw = boto3.client("cloudwatch", region_name=AWS_REGION)
+def _build_github_context(payload: dict) -> dict:
+    """Extract structured context from a GitHub push payload."""
+    head_commit = payload.get("head_commit", {})
+    all_commits = payload.get("all_commits", [])
 
-        # Extract alarm name and namespace from payload
-        alarm_name = alert_payload.get("AlarmName", "")
-        namespace = alert_payload.get("Trigger", {}).get("Namespace", "AWS/ApplicationELB")
-        dimensions = alert_payload.get("Trigger", {}).get("Dimensions", [])
+    # Aggregate all changed files across commits
+    all_modified = []
+    all_added = []
+    all_removed = []
+    for commit in all_commits:
+        all_modified.extend(commit.get("modified", []))
+        all_added.extend(commit.get("added", []))
+        all_removed.extend(commit.get("removed", []))
 
-        # For demo: return structured context even if metrics are unavailable
-        return {
-            "alarm_name": alarm_name,
-            "namespace": namespace,
-            "dimensions": dimensions,
-            "trigger_threshold": alert_payload.get("Trigger", {}).get("Threshold", "N/A"),
-            "trigger_metric": alert_payload.get("Trigger", {}).get("MetricName", "Unknown"),
-            "alarm_description": alert_payload.get("AlarmDescription", ""),
-            "state_reason": alert_payload.get("NewStateReason", ""),
-        }
-    except Exception as e:
-        logger.warning(f"[triage_agent] CloudWatch query failed, using payload only: {e}")
-        return {"raw_alarm": alert_payload}
+    return {
+        "trigger_type": "github_push",
+        "repo": payload.get("repo_id", "unknown"),
+        "branch": payload.get("ref", "").replace("refs/heads/", ""),
+        "pusher": payload.get("pusher", "unknown"),
+        "head_commit_message": head_commit.get("message", ""),
+        "head_commit_sha": head_commit.get("id", ""),
+        "head_commit_author": head_commit.get("author", "unknown"),
+        "commit_count": len(all_commits),
+        "files_modified": list(set(all_modified))[:20],
+        "files_added": list(set(all_added))[:10],
+        "files_removed": list(set(all_removed))[:10],
+        "total_files_changed": len(set(all_modified + all_added + all_removed)),
+    }
 
 
-def _call_nova_triage(alert_payload: dict, metric_context: dict) -> dict:
-    """
-    Call Nova 2 Lite to classify severity and identify blast radius.
-    Returns typed dict: {severity, blast_radius, triage_summary_snippet}
-    """
+def _build_cloudwatch_context(payload: dict) -> dict:
+    """Extract context from a CloudWatch alarm payload (legacy/replay support)."""
+    return {
+        "trigger_type": "cloudwatch_alarm",
+        "alarm_name": payload.get("AlarmName", ""),
+        "namespace": payload.get("Trigger", {}).get("Namespace", ""),
+        "dimensions": payload.get("Trigger", {}).get("Dimensions", []),
+        "threshold": payload.get("Trigger", {}).get("Threshold", "N/A"),
+        "metric": payload.get("Trigger", {}).get("MetricName", "Unknown"),
+        "state_reason": payload.get("NewStateReason", ""),
+    }
+
+
+def _call_nova_triage(alert_payload: dict, context: dict, alert_source: str) -> dict:
+    """Call Nova 2 Lite to classify severity and blast radius."""
     bedrock = boto3.client("bedrock-runtime", region_name=AWS_REGION)
 
-    system_prompt = """You are an expert SRE (Site Reliability Engineer) analyzing a production incident alert.
-Your job is to assess severity and identify which services are affected (blast radius).
+    system_prompt = """You are an expert SRE analyzing a production incident.
+Assess severity and identify affected services (blast radius).
+
+For GitHub push triggers, assess risk based on:
+- Files changed (payment/, auth/, config/, database/ = high risk)
+- Commit message keywords (fix, hotfix, patch, revert, urgent = higher risk)
+- Config/dependency changes (requirements.txt, package.json, *.yml = higher risk)
+- Core service files vs docs/tests (service code = higher risk)
 
 Severity levels:
-- HIGH: Data loss, complete service outage, payment failures, >10k users impacted
-- MED: Degraded performance, partial outage, elevated error rates, 1k-10k users impacted  
-- LOW: Minor degradation, <1k users impacted, non-critical service
+- HIGH: Payment/auth service changes, config changes in critical paths, database migrations
+- MED: Service code changes with moderate blast radius, dependency updates
+- LOW: Tests, docs, non-critical services, frontend-only changes
 
-You must respond with ONLY valid JSON, no explanation, no markdown fences. Format:
+Respond with ONLY valid JSON, no markdown:
 {
   "severity": "HIGH|MED|LOW",
   "blast_radius": ["service-name-1", "service-name-2"],
-  "triage_summary_snippet": "One sentence summary of what is happening and why it's serious.",
+  "triage_summary_snippet": "One sentence: what changed and why it could cause issues.",
   "reasoning": "Brief explanation of severity classification."
 }"""
 
-    user_message = f"""Analyze this production alert:
+    user_message = f"""Analyze this production incident trigger:
 
-ALARM PAYLOAD:
+SOURCE: {alert_source}
+
+ALERT PAYLOAD:
 {json.dumps(alert_payload, indent=2, default=str)}
 
-METRIC CONTEXT:
-{json.dumps(metric_context, indent=2, default=str)}
+EXTRACTED CONTEXT:
+{json.dumps(context, indent=2, default=str)}
 
-Identify:
-1. Severity level (HIGH/MED/LOW)
-2. All services likely affected (blast radius) — infer from service names, namespaces, and alarm context
-3. A one-sentence triage summary
-
+Identify severity, blast radius (which services are affected), and a one-sentence summary.
+Infer service names from file paths and repo name.
 Respond with ONLY the JSON object."""
 
     response = bedrock.invoke_model(
         modelId=NOVA_LITE_MODEL,
-        body=json.dumps({
-            "messages": [{"role": "user", "content": [{"text": user_message}]}],
-            "system": [{"text": system_prompt}],
-            "inferenceConfig": {
-                "maxTokens": 512,
-                "temperature": 0.1,   # Low temp for consistent classification
-            },
-        }),
+        body=json.dumps(
+            {
+                "messages": [{"role": "user", "content": [{"text": user_message}]}],
+                "system": [{"text": system_prompt}],
+                "inferenceConfig": {"maxTokens": 512, "temperature": 0.1},
+            }
+        ),
         contentType="application/json",
         accept="application/json",
     )
@@ -140,7 +171,6 @@ Respond with ONLY the JSON object."""
     response_body = json.loads(response["body"].read())
     raw_text = response_body["output"]["message"]["content"][0]["text"].strip()
 
-    # Strip markdown fences if Nova wraps response
     if raw_text.startswith("```"):
         raw_text = raw_text.split("```")[1]
         if raw_text.startswith("json"):
@@ -148,11 +178,11 @@ Respond with ONLY the JSON object."""
         raw_text = raw_text.strip()
 
     result = json.loads(raw_text)
-
-    # Validate required fields
     return {
         "severity": result.get("severity", "MED"),
         "blast_radius": result.get("blast_radius", []),
-        "triage_summary_snippet": result.get("triage_summary_snippet", "Incident detected."),
+        "triage_summary_snippet": result.get(
+            "triage_summary_snippet", "Incident detected."
+        ),
         "reasoning": result.get("reasoning", ""),
     }

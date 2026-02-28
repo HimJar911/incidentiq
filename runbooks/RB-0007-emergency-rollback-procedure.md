@@ -6,25 +6,29 @@ severity_scope: HIGH, MED, LOW
 tags: [rollback, deployment, ecs, revert, emergency]
 first_action_step: Identify the bad deployment revision and run the rollback command for the affected service.
 ---
-
+<!-- iq:runbook_id=RB-0007 | title=Emergency Rollback Procedure | first_action_step=Identify the bad deployment revision and run the rollback command for the affected service. -->
 # Emergency Rollback Procedure
 
 ## Overview
+<!-- iq:runbook_id=RB-0007 | title=Emergency Rollback Procedure | first_action_step=Identify the bad deployment revision and run the rollback command for the affected service. -->
 This runbook covers the standard emergency rollback procedure for any ECS service.
 Use this when a recent deployment is identified as the root cause of an incident.
 
 ## When to Use This Runbook
+<!-- iq:runbook_id=RB-0007 | title=Emergency Rollback Procedure | first_action_step=Identify the bad deployment revision and run the rollback command for the affected service. -->
 - Error rate spike correlated with a recent deployment
 - Automated investigation identifies a suspect commit from the last 6 hours
 - On-call lead makes the call to rollback rather than hotfix forward
 
 ## Pre-Rollback Checklist
+<!-- iq:runbook_id=RB-0007 | title=Emergency Rollback Procedure | first_action_step=Identify the bad deployment revision and run the rollback command for the affected service. -->
 - [ ] Confirm deployment timestamp correlates with incident start
 - [ ] Identify the previous stable task definition revision
 - [ ] Notify team in `#incidents` that rollback is starting
 - [ ] Confirm no database migrations were included (migrations cannot be rolled back automatically)
 
 ## Rollback Steps
+<!-- iq:runbook_id=RB-0007 | title=Emergency Rollback Procedure | first_action_step=Identify the bad deployment revision and run the rollback command for the affected service. -->
 
 ### 1. Identify current and previous revisions
 ```bash
@@ -86,6 +90,7 @@ aws cloudwatch get-metric-statistics \
 ```
 
 ## Service-Specific Notes
+<!-- iq:runbook_id=RB-0007 | title=Emergency Rollback Procedure | first_action_step=Identify the bad deployment revision and run the rollback command for the affected service. -->
 | Service | Migration Risk | Rollback Time | Owner |
 |---------|---------------|---------------|-------|
 | payments-service | HIGH — always check | ~3 min | payments-team |
@@ -94,6 +99,7 @@ aws cloudwatch get-metric-statistics \
 | api-gateway | NONE | ~1 min | platform-team |
 
 ## Post-Rollback
+<!-- iq:runbook_id=RB-0007 | title=Emergency Rollback Procedure | first_action_step=Identify the bad deployment revision and run the rollback command for the affected service. -->
 - Confirm error rate returned to baseline
 - Notify team in `#incidents` that rollback is complete
 - Create hotfix branch — do not re-deploy the same commit

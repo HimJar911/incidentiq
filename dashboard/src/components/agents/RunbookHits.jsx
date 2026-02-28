@@ -46,7 +46,7 @@ export function RunbookHits({ hits = [] }) {
         >
             <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
                 {hits.length
-                    ? hits.map((hit, i) => <RunbookCard key={hit.runbook_id ?? i} hit={hit} />)
+                    ? hits.map((hit, i) => <RunbookCard key={`${hit.runbook_id}-${i}`} hit={hit} />)
                     : <span style={{ fontSize: 11, color: T.text.disabled, fontStyle: "italic" }}>Searching knowledge base…</span>
                 }
             </div>

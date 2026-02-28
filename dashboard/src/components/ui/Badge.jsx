@@ -1,6 +1,6 @@
 // ─── Badge Components ──────────────────────────────────────────────────────────
 
-import T from "../styles/tokens";
+import T from "../../styles/tokens";
 
 export function SeverityBadge({ severity }) {
     if (!severity) return null;
