@@ -1,13 +1,13 @@
 """
-Triage Agent — Agent 1 (V2 — GitHub push trigger)
+Triage Agent — Agent 1 (V3 — real blast radius from repo analysis)
 
-Changes from V1:
-- Handles GitHub push payloads (not just CloudWatch alarms)
-- Extracts commit info directly from alert_payload (no CloudWatch needed)
-- Severity reasoning based on: files changed, commit message, repo context
+Changes from V2:
+- Uses stored service_dependencies from repo config (populated at onboard time)
+  instead of guessing blast radius from filenames alone
+- Passes dependency graph to Nova so it understands the actual service topology
 - Still works with CloudWatch/Replay payloads as fallback
 
-Input:  incident.alert_payload (GitHub push event OR CloudWatch alarm)
+Input:  incident.alert_payload + repo_config.service_dependencies
 Output: severity, blast_radius, triage_summary_snippet → DynamoDB
 """
 
@@ -35,15 +35,21 @@ def run_triage(incident_id: str) -> dict:
     incident = get_incident(incident_id)
     alert_payload = incident.get("alert_payload", {})
     alert_source = incident.get("alert_source", "CloudWatch")
+    repo_id = incident.get("repo_id", "")
 
-    # Build context depending on trigger source
+    # Load stored repo analysis (blast radius, tech stack, DAU)
+    repo_analysis = _load_repo_analysis(repo_id)
+
+    # Build context
     if alert_source == "GitHub":
         context = _build_github_context(alert_payload)
     else:
         context = _build_cloudwatch_context(alert_payload)
 
-    # Call Nova
-    triage_result = _call_nova_triage(alert_payload, context, alert_source)
+    # Call Nova with real service dependency context
+    triage_result = _call_nova_triage(
+        alert_payload, context, alert_source, repo_analysis
+    )
 
     # Write to DynamoDB
     update_incident(
@@ -72,12 +78,36 @@ def run_triage(incident_id: str) -> dict:
     return triage_result
 
 
+def _load_repo_analysis(repo_id: str) -> dict:
+    """
+    Load stored repo analysis from DynamoDB repo config.
+    This was populated at onboard time by repo_analyzer.
+    """
+    if not repo_id:
+        return {}
+
+    try:
+        from backend.models.repo import get_repo_config
+
+        config = get_repo_config(repo_id)
+        if not config:
+            return {}
+
+        return {
+            "service_dependencies": config.get("service_dependencies", []),
+            "tech_stack": config.get("tech_stack", []),
+            "estimated_dau": config.get("estimated_dau", 0),
+        }
+    except Exception as e:
+        logger.warning(f"[triage_agent] Could not load repo analysis: {e}")
+        return {}
+
+
 def _build_github_context(payload: dict) -> dict:
     """Extract structured context from a GitHub push payload."""
     head_commit = payload.get("head_commit", {})
     all_commits = payload.get("all_commits", [])
 
-    # Aggregate all changed files across commits
     all_modified = []
     all_added = []
     all_removed = []
@@ -103,7 +133,7 @@ def _build_github_context(payload: dict) -> dict:
 
 
 def _build_cloudwatch_context(payload: dict) -> dict:
-    """Extract context from a CloudWatch alarm payload (legacy/replay support)."""
+    """Extract context from a CloudWatch alarm payload."""
     return {
         "trigger_type": "cloudwatch_alarm",
         "alarm_name": payload.get("AlarmName", ""),
@@ -115,17 +145,34 @@ def _build_cloudwatch_context(payload: dict) -> dict:
     }
 
 
-def _call_nova_triage(alert_payload: dict, context: dict, alert_source: str) -> dict:
+def _call_nova_triage(
+    alert_payload: dict,
+    context: dict,
+    alert_source: str,
+    repo_analysis: dict,
+) -> dict:
     """Call Nova 2 Lite to classify severity and blast radius."""
     bedrock = boto3.client("bedrock-runtime", region_name=AWS_REGION)
 
-    system_prompt = """You are an expert SRE analyzing a production incident.
+    # Format the known service dependency graph for Nova
+    known_dependencies = repo_analysis.get("service_dependencies", [])
+    tech_stack = repo_analysis.get("tech_stack", [])
+
+    dependency_context = ""
+    if known_dependencies:
+        dependency_context = f"""
+KNOWN SERVICE DEPENDENCIES (from repo analysis):
+This service calls or depends on: {', '.join(known_dependencies)}
+When this service has an incident, these downstream services are also potentially affected.
+"""
+
+    system_prompt = f"""You are an expert SRE analyzing a production incident.
 Assess severity and identify affected services (blast radius).
 
 For GitHub push triggers, assess risk based on:
 - Files changed (payment/, auth/, config/, database/ = high risk)
 - Commit message keywords (fix, hotfix, patch, revert, urgent = higher risk)
-- Config/dependency changes (requirements.txt, package.json, *.yml = higher risk)
+- Config/dependency changes = higher risk
 - Core service files vs docs/tests (service code = higher risk)
 
 Severity levels:
@@ -133,17 +180,25 @@ Severity levels:
 - MED: Service code changes with moderate blast radius, dependency updates
 - LOW: Tests, docs, non-critical services, frontend-only changes
 
+{dependency_context}
+
+When listing blast_radius, include:
+1. The directly affected service (infer from repo name and files changed)
+2. Any known downstream dependencies that would be impacted
+3. Only include services that would ACTUALLY be affected by this specific change
+
 Respond with ONLY valid JSON, no markdown:
-{
+{{
   "severity": "HIGH|MED|LOW",
   "blast_radius": ["service-name-1", "service-name-2"],
   "triage_summary_snippet": "One sentence: what changed and why it could cause issues.",
   "reasoning": "Brief explanation of severity classification."
-}"""
+}}"""
 
     user_message = f"""Analyze this production incident trigger:
 
 SOURCE: {alert_source}
+TECH STACK: {', '.join(tech_stack) if tech_stack else 'Unknown'}
 
 ALERT PAYLOAD:
 {json.dumps(alert_payload, indent=2, default=str)}
@@ -152,7 +207,7 @@ EXTRACTED CONTEXT:
 {json.dumps(context, indent=2, default=str)}
 
 Identify severity, blast radius (which services are affected), and a one-sentence summary.
-Infer service names from file paths and repo name.
+Use the known service dependencies to inform your blast radius — don't just guess from filenames.
 Respond with ONLY the JSON object."""
 
     response = bedrock.invoke_model(

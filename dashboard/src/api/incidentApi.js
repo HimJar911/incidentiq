@@ -62,11 +62,15 @@ export async function triggerReplay(payloadName = "payments_service_high", custo
 /**
  * POST /api/resolve
  * Marks an incident as resolved and triggers postmortem pipeline.
+ * Accepts optional resolutionNotes — included in postmortem if provided.
  */
-export async function resolveIncident(incidentId) {
+export async function resolveIncident(incidentId, resolutionNotes = "") {
     return request(ENDPOINTS.resolve, {
         method: "POST",
-        body: JSON.stringify({ incident_id: incidentId }),
+        body: JSON.stringify({
+            incident_id: incidentId,
+            ...(resolutionNotes?.trim() ? { resolution_notes: resolutionNotes.trim() } : {}),
+        }),
     });
 }
 

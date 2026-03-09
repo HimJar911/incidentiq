@@ -1,0 +1,46 @@
+# Python
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.Python
+**/*.egg-info/
+**/dist/
+**/build/
+
+# Virtual environments — never copy these into the image
+**/.venv/
+**/venv/
+**/env/
+
+# CDK
+infra/cdk.out/
+infra/.venv/
+
+# Frontend — not needed in backend container
+dashboard/
+dashboard/node_modules/
+
+# Dev/test artifacts
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/htmlcov/
+**/.coverage
+
+# Environment files — secrets come from AWS Secrets Manager in prod
+backend/.env
+.env
+
+# Git
+.git/
+.gitignore
+
+# Docs
+README.md
+structure.txt
+scripts/
+
+# Misc
+**/.DS_Store
+**/*.log

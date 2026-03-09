@@ -207,16 +207,17 @@ def set_status(incident_id: str, status: IncidentStatus) -> None:
     )
 
 
-def resolve_incident(incident_id: str) -> None:
+def resolve_incident(incident_id: str, extra_fields: dict = None) -> None:
     """Mark incident as resolved. Triggers Postmortem Agent."""
     now = _now()
-    update_incident(
-        incident_id,
-        {
-            "status": IncidentStatus.RESOLVED.value,
-            "resolved_at": now,
-        },
-    )
+    fields = {
+        "status": IncidentStatus.RESOLVED.value,
+        "resolved_at": now,
+    }
+    if extra_fields:
+        fields.update(extra_fields)
+
+    update_incident(incident_id, fields)
     append_action_log(
         incident_id,
         agent="api",

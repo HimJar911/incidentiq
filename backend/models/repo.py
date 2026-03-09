@@ -1,15 +1,18 @@
 """
-Repo model — per-repo configuration for connected GitHub repositories.
+Repo model V2 — per-repo configuration + analysis results.
 Stored in DynamoDB table: incidentiq-repos
 
-Each record represents one connected repo with its Slack webhook and
-GitHub webhook registration details.
+New fields vs V1:
+  service_dependencies  — list of services this repo calls (from repo_analyzer)
+  estimated_dau         — estimated daily active users (from repo_analyzer)
+  tech_stack            — detected tech stack (from repo_analyzer)
+  runbooks_ingested     — list of S3 keys for ingested runbooks
+  analysis_completed_at — when analysis last ran
 """
 
 from __future__ import annotations
 
 import os
-import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -39,12 +42,7 @@ def create_repo_config(
     github_webhook_id: Optional[int] = None,
     github_token: Optional[str] = None,
 ) -> dict:
-    """
-    Save a connected repo config to DynamoDB.
-    repo_id is derived from the GitHub URL: "owner/repo"
-    Returns the full repo config dict.
-    """
-    # Normalize: "https://github.com/HimJar911/payments-service" → "HimJar911/payments-service"
+    """Save a connected repo config. Returns the full repo config dict."""
     repo_id = _url_to_repo_id(github_url)
 
     item = {
@@ -52,23 +50,60 @@ def create_repo_config(
         "github_url": github_url,
         "slack_webhook_url": slack_webhook_url,
         "github_webhook_id": github_webhook_id,
-        # Store token encrypted-ish — in prod this would go to Secrets Manager
-        # For hackathon: store in DynamoDB (not ideal but functional)
         "github_token": github_token,
         "connected_at": _now(),
         "incident_count": 0,
         "last_incident_at": None,
+        # Analysis fields — populated by repo_analyzer after connect
+        "service_dependencies": [],
+        "estimated_dau": 0,
+        "tech_stack": [],
+        "runbooks_ingested": [],
+        "analysis_completed_at": None,
+        "analysis_status": "pending",  # pending | running | complete | failed
     }
 
     _get_table().put_item(Item=item)
     return item
 
 
+def update_repo_analysis(repo_id: str, analysis_result: dict) -> None:
+    """
+    Store results from repo_analyzer into the repo config.
+    Called after onboard analysis completes.
+    """
+    _get_table().update_item(
+        Key={"repo_id": repo_id},
+        UpdateExpression=(
+            "SET service_dependencies = :deps, "
+            "estimated_dau = :dau, "
+            "tech_stack = :tech, "
+            "runbooks_ingested = :runbooks, "
+            "analysis_completed_at = :ts, "
+            "analysis_status = :status"
+        ),
+        ExpressionAttributeValues={
+            ":deps": analysis_result.get("service_dependencies", []),
+            ":dau": analysis_result.get("estimated_dau", 0),
+            ":tech": analysis_result.get("tech_stack", []),
+            ":runbooks": analysis_result.get("runbooks_ingested", []),
+            ":ts": _now(),
+            ":status": "complete",
+        },
+    )
+
+
+def set_analysis_status(repo_id: str, status: str) -> None:
+    """Update analysis status (pending/running/complete/failed)."""
+    _get_table().update_item(
+        Key={"repo_id": repo_id},
+        UpdateExpression="SET analysis_status = :status",
+        ExpressionAttributeValues={":status": status},
+    )
+
+
 def get_repo_config(repo_id: str) -> Optional[dict]:
-    """
-    Fetch repo config by repo_id (e.g. "HimJar911/payments-service").
-    Returns None if not found.
-    """
+    """Fetch repo config by repo_id."""
     response = _get_table().get_item(Key={"repo_id": repo_id})
     return response.get("Item")
 
@@ -87,7 +122,7 @@ def list_repos() -> list[dict]:
 
 
 def delete_repo_config(repo_id: str) -> None:
-    """Remove a repo config (on disconnect)."""
+    """Remove a repo config."""
     _get_table().delete_item(Key={"repo_id": repo_id})
 
 
@@ -95,7 +130,10 @@ def increment_incident_count(repo_id: str) -> None:
     """Bump incident counter and update last_incident_at."""
     _get_table().update_item(
         Key={"repo_id": repo_id},
-        UpdateExpression="SET incident_count = if_not_exists(incident_count, :zero) + :one, last_incident_at = :now",
+        UpdateExpression=(
+            "SET incident_count = if_not_exists(incident_count, :zero) + :one, "
+            "last_incident_at = :now"
+        ),
         ExpressionAttributeValues={
             ":zero": 0,
             ":one": 1,
@@ -113,7 +151,6 @@ def _url_to_repo_id(github_url: str) -> str:
     """
     Convert GitHub URL to repo_id.
     "https://github.com/HimJar911/payments-service" → "HimJar911/payments-service"
-    "HimJar911/payments-service" → "HimJar911/payments-service" (passthrough)
     """
     url = github_url.strip().rstrip("/")
     if "github.com/" in url:
@@ -122,10 +159,6 @@ def _url_to_repo_id(github_url: str) -> str:
 
 
 def parse_webhook_repo_id(payload: dict) -> Optional[str]:
-    """
-    Extract repo_id from a GitHub webhook push payload.
-    Returns "owner/repo" string or None.
-    """
+    """Extract repo_id from a GitHub webhook push payload."""
     repo = payload.get("repository", {})
-    full_name = repo.get("full_name")
-    return full_name
+    return repo.get("full_name")
