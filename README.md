@@ -1,112 +1,214 @@
-# IncidentIQ — Autonomous Incident Response Agent
-> Amazon Nova AI Hackathon 2026 — Agentic AI Category
+# IncidentIQ
+### Autonomous Incident Response, Powered by Amazon Nova
+
+> When a bad commit hits production, IncidentIQ detects it in under 10 seconds, identifies the exact line that broke, knows how many users are affected, posts a Slack war room brief, and generates a full postmortem — all without a human touching anything.
+
+**Live Demo:** [incidentiq-one.vercel.app](https://incidentiq-one.vercel.app)  
+**Built for:** Amazon Nova AI Hackathon 2026
+
+---
 
 ## What It Does
-When a CloudWatch alarm fires, IncidentIQ autonomously:
-1. **Triages** the incident — severity, blast radius, affected services
-2. **Investigates** — fingers the suspect commit/PR from GitHub
-3. **Searches runbooks** — semantic RAG over your runbook library
-4. **Posts a war-room brief** to Slack with estimated user impact
-5. **Generates a postmortem** the moment the incident is resolved
 
-Built with Strands Agents + Amazon Nova 2 Lite + Nova Multimodal Embeddings on AWS.
+Most incident response looks like this: an alert fires, an engineer gets paged at 2am, spends 20 minutes figuring out what broke and how bad it is, then another 30 minutes writing a postmortem from memory. IncidentIQ eliminates every one of those steps.
+
+Connect a GitHub repo. Every push gets evaluated. The ones that matter trigger a full autonomous pipeline — triage, investigation, blast radius, Slack brief, and postmortem — in under 12 seconds.
 
 ---
 
-## Stack
-| Layer | Technology |
+## The Pipeline
+
+When a risky commit is pushed to `main`:
+
+```
+GitHub Webhook
+      ↓
+Push Filter (2-layer gate)
+  Layer 1: File pattern check — skip README edits, test changes, docs
+  Layer 2: Nova Lite semantic risk check — is this worth paging on-call?
+      ↓
+Incident Created in DynamoDB
+      ↓
+5 Agents Run in Parallel:
+  ├── Triage Agent       — classifies severity (LOW/MED/HIGH), calculates blast radius
+  ├── Investigation Agent — fetches real unified diff from GitHub API, Nova reads actual changed lines
+  ├── Runbook Agent      — searches Bedrock Knowledge Base for repo-specific runbooks
+  ├── Communication Agent — posts Slack war room brief with users affected + blast radius
+  └── (Orchestrator coordinates all five)
+      ↓
+Engineer pushes fix commit → marks incident resolved (with notes via dashboard modal)
+      ↓
+Fix Commit Detector — Nova verifies the diff actually reverses the bug (≥75% confidence)
+      ↓
+Postmortem Agent — generates full markdown postmortem with timeline, root cause,
+                   verified fix commit hash, engineer notes, and action items
+```
+
+---
+
+## What Makes It Real
+
+Everything that matters is live data, not mocks:
+
+| Feature | What It Actually Does |
 |---|---|
-| Agent Orchestration | Strands Agents |
-| LLM Reasoning | Amazon Nova 2 Lite (Bedrock) |
-| Embeddings / RAG | Amazon Nova Multimodal Embeddings (Bedrock Knowledge Base) |
-| Incident State | DynamoDB |
-| Object Storage | S3 |
-| Queue / Reliability | SQS + DLQ |
-| Secrets | AWS Secrets Manager |
-| Trigger | CloudWatch → SNS → Lambda |
-| Backend | FastAPI (Python) |
-| Dashboard | React |
+| **User impact** | Scans README, k8s replicas, pool sizes, worker counts — anchors to explicit numbers if found |
+| **Bug identification** | Fetches real unified diffs from GitHub API — Nova reads actual changed lines and cites specific line numbers |
+| **Blast radius** | Parsed from real HTTP call patterns and env var references in the codebase |
+| **Runbook matching** | Scraped from repo's own `docs/` folder at onboard time, uploaded to S3 + Bedrock KB |
+| **Fix verification** | Nova reads the fix commit diff and confirms it reverses the original bug — not just "next commit = fix" |
+| **Push filter** | Two-layer gate rejects safe commits (README edits, test changes) before any incident is created |
 
 ---
 
-## Repo Structure
+## Nova Usage
+
+| Model | Where Used |
+|---|---|
+| **Nova Lite** | Push filter semantic risk check, triage severity classification, fix commit detection |
+| **Nova Pro** | Deep investigation — reading unified diffs, identifying specific broken lines, root cause analysis |
+| **Nova Multimodal Embeddings** | Bedrock Knowledge Base — semantic runbook search across repo-specific docs |
+
+---
+
+## Demo Scenario
+
+The `ecommerce-platform` test repo is a realistic 4-microservice system with 124,000 daily active users (stated in README), 6 custom runbooks, and a real service dependency graph.
+
+**One commit introduces two simultaneous failures:**
+```python
+# config/settings.py
+DB_POOL_SIZE = int(os.environ.get("DB_POOL_SIZE", "0"))        # was 20 — connection exhaustion
+TAX_RATE_MULTIPLIER = float(os.environ.get("TAX_RATE_MULTIPLIER", "0"))  # was 0.08 — regulatory violation
 ```
-incidentiq/
-├── infra/                  CDK stack — all AWS resources
-├── backend/
-│   ├── agents/             5 Strands sub-agents
-│   ├── orchestrator/       Strands planner + dispatch logic
-│   ├── integrations/       GitHub, Slack, CloudWatch clients
-│   ├── models/             Incident data model + DynamoDB helpers
-│   └── api/                FastAPI routes (ingest, replay, resolve)
-├── dashboard/              React dashboard (live feed, replay, postmortem)
-├── runbooks/               Sample runbook docs for Bedrock Knowledge Base
-├── replay/                 Pre-recorded alarm payloads for deterministic demo
-└── scripts/                Utility scripts (seed runbooks, test trigger, etc.)
+
+IncidentIQ fires in ~10 seconds:
+- **HIGH severity** — Nova escalates because both infrastructure and compliance are affected
+- **All 5 services** in blast radius
+- **Both bugs identified** with exact line numbers — Line 25 and Line 66
+- **3 repo-specific runbooks** matched — DB Pool Exhaustion, High Error Rate, Inventory Oversell
+- **Slack war room** posted with full context
+
+---
+
+## Architecture
+
+```
+Frontend (React + Vite)          Backend (Python + FastAPI)
+incidentiq-one.vercel.app   →    AWS ECS Fargate (incidentiq-cluster)
+                                       ↓
+                             ┌─────────────────────┐
+                             │   DynamoDB Tables    │
+                             │  incidentiq-repos    │
+                             │  incidentiq-incidents│
+                             └─────────────────────┘
+                                       ↓
+                             ┌─────────────────────┐
+                             │   AWS Services       │
+                             │  Bedrock (Nova)      │
+                             │  Bedrock KB          │
+                             │  S3 (runbooks)       │
+                             │  Secrets Manager     │
+                             └─────────────────────┘
+                                       ↓
+                             ┌─────────────────────┐
+                             │   External           │
+                             │  GitHub API          │
+                             │  Slack Webhooks      │
+                             └─────────────────────┘
 ```
 
 ---
 
-## Quick Start
+## Running Locally
 
-### Prerequisites
-- AWS CLI configured with appropriate permissions
-- Node.js 18+ (for CDK)
-- Python 3.11+
-- AWS CDK v2: `npm install -g aws-cdk`
-
-### 1. Deploy Infrastructure
-```bash
-cd infra
-pip install -r requirements.txt
-cdk bootstrap    # first time only
-cdk deploy
-```
-
-### 2. Start Backend
+### Backend
 ```bash
 cd backend
 pip install -r requirements.txt
-cp .env.example .env   # fill in your values
+
+# Required environment variables
+export AWS_REGION=us-east-1
+export BEDROCK_KB_ID=your_kb_id
+export BEDROCK_DATA_SOURCE_ID=your_datasource_id
+export S3_BUCKET=your_bucket
+export REPOS_TABLE=incidentiq-repos
+export INCIDENTS_TABLE=incidentiq-incidents
+export SLACK_CHANNEL=#incidents
+export GITHUB_WEBHOOK_SECRET=your_secret
+
 uvicorn api.main:app --reload --port 8000
 ```
 
-### 3. Start Dashboard
+### Frontend
 ```bash
 cd dashboard
 npm install
-npm start
-```
-
-### 4. Seed Runbooks into Bedrock Knowledge Base
-```bash
-cd scripts
-python seed_runbooks.py
-```
-
-### 5. Fire a Test Incident
-```bash
-# Replay endpoint (deterministic demo trigger)
-curl -X POST http://localhost:8000/api/replay \
-  -H "Content-Type: application/json" \
-  -d @replay/payments_service_high.json
+echo "VITE_API_BASE=http://localhost:8000" > .env.local
+npm run dev
 ```
 
 ---
 
-## Demo Flow (3-minute video script)
-1. `0:00–0:25` — Problem setup voiceover
-2. `0:25–0:45` — Alarm trigger + status → ingested
-3. `0:45–1:10` — Live agent feed: triage + blast radius
-4. `1:10–1:35` — Suspect commit + runbook hit
-5. `1:35–1:55` — Slack war-room brief with user impact count
-6. `1:55–2:15` — Postmortem generated
-7. `2:15–2:45` — Architecture diagram close
-8. `2:45–3:00` — Closing card + #AmazonNova
+## Connecting a Repo
+
+1. Open the dashboard
+2. Click **+ Connect Repository**
+3. Enter your GitHub repo (format: `owner/repo`) and a GitHub personal access token
+4. IncidentIQ analyzes the repo — finds runbooks, builds service dependency graph, estimates DAU
+5. A webhook is registered automatically — every push to `main` is now evaluated
 
 ---
 
-## Hackathon Submission
-- **Category:** Agentic AI
-- **Nova Models Used:** Nova 2 Lite (reasoning), Nova Multimodal Embeddings (RAG)
-- **Hashtag:** #AmazonNova
+## Deployment
+
+### Backend (AWS ECS)
+```bash
+# Login to ECR
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin <account>.dkr.ecr.us-east-1.amazonaws.com
+
+# Build, tag, push
+docker build -t incidentiq-backend .
+docker tag incidentiq-backend:latest <account>.dkr.ecr.us-east-1.amazonaws.com/incidentiq-backend:latest
+docker push <account>.dkr.ecr.us-east-1.amazonaws.com/incidentiq-backend:latest
+
+# Deploy
+aws ecs update-service --cluster incidentiq-cluster --service incidentiq-backend --force-new-deployment --region us-east-1
+```
+
+### Frontend (Vercel)
+Set `VITE_API_BASE` environment variable to your backend URL and deploy via Vercel dashboard or CLI.
+
+---
+
+## Cost
+
+IncidentIQ runs for pennies per incident. Nova Lite calls (push filter, triage) cost ~$0.001 each. Nova Pro calls (investigation) cost ~$0.01 each. A busy team pushing 50 times per day with 5 real incidents would spend under $1/day.
+
+---
+
+## Roadmap
+
+- Multi-tenancy with org-scoped Bedrock KB namespaces
+- GitHub token management via Secrets Manager per org
+- Real DAU from CloudWatch/Datadog instead of estimated
+- Webhook signature verification per environment
+- PagerDuty integration for automated escalation
+- Mobile push notifications for war room alerts
+
+---
+
+## Built With
+
+- **Amazon Nova** (Lite, Pro, Multimodal Embeddings) via Amazon Bedrock
+- **Amazon Bedrock Knowledge Bases** — semantic runbook search
+- **AWS ECS Fargate** — containerized backend
+- **AWS DynamoDB** — incident and repo state
+- **AWS S3** — runbook storage
+- **FastAPI** — backend API
+- **React + Vite** — frontend dashboard
+- **Vercel** — frontend hosting
+
+---
+
+*IncidentIQ — The on-call engineer who never sleeps.*
