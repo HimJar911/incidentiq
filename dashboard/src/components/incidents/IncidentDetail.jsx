@@ -172,11 +172,7 @@ export function IncidentDetail({ incidentId, prevStatusMap }) {
         </div>
     );
 
-    if (error) return (
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: T.severity.HIGH.fg, fontSize: 12, fontFamily: T.fonts.mono }}>
-            Error: {error}
-        </div>
-    );
+    if (error) return null;
 
     if (!incident) return null;
 

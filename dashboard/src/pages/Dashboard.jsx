@@ -22,6 +22,31 @@ export function Dashboard() {
         }
     }, [incidents, selectedId]);
 
+    // Auto-select newest incident when a new one appears
+    useEffect(() => {
+        const prev = prevIncidentsRef.current;
+        const prevIds = new Set(prev.map(i => i.incident_id));
+        const brandNew = incidents.filter(i => !prevIds.has(i.incident_id));
+
+        if (brandNew.length > 0) {
+            // Select the newest one automatically
+            setSelectedId(brandNew[0].incident_id);
+
+            // Track for slide-in animation
+            const newIdList = brandNew.map(i => i.incident_id);
+            setNewIds(ids => new Set([...ids, ...newIdList]));
+            setTimeout(() => {
+                setNewIds(ids => {
+                    const next = new Set(ids);
+                    newIdList.forEach(id => next.delete(id));
+                    return next;
+                });
+            }, 2000);
+        }
+
+        prevIncidentsRef.current = incidents;
+    }, [incidents]);
+
     // Track status changes for pipeline animation
     useEffect(() => {
         const prev = prevIncidentsRef.current;
@@ -31,25 +56,6 @@ export function Dashboard() {
                 setPrevStatusMap(m => ({ ...m, [inc.incident_id]: prevInc.status }));
             }
         });
-        prevIncidentsRef.current = incidents;
-    }, [incidents]);
-
-    // Track new incidents (for slide-in animation)
-    useEffect(() => {
-        const prev = prevIncidentsRef.current;
-        const prevIds = new Set(prev.map(i => i.incident_id));
-        const brandNew = incidents.filter(i => !prevIds.has(i.incident_id)).map(i => i.incident_id);
-        if (brandNew.length) {
-            setNewIds(ids => new Set([...ids, ...brandNew]));
-            // Remove new flag after animation completes
-            setTimeout(() => {
-                setNewIds(ids => {
-                    const next = new Set(ids);
-                    brandNew.forEach(id => next.delete(id));
-                    return next;
-                });
-            }, 2000);
-        }
     }, [incidents]);
 
     // When replay creates a new incident, select it immediately
