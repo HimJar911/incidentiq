@@ -129,6 +129,25 @@ def _severity_based_estimate(incident: dict) -> int:
     return int(base * multiplier)
 
 
+def _format_suspect_commit(suspect: dict) -> str:
+    """Format suspect commit cleanly for Nova prompt — no raw JSON."""
+    if not suspect:
+        return "None identified"
+
+    commit_hash = suspect.get("commit_hash", "unknown")[:8]
+    author = suspect.get("author", "unknown")
+    reason = suspect.get("reason", "")
+    specific_issue = suspect.get("specific_issue", "")
+
+    lines = [f"Commit: {commit_hash} by {author}"]
+    if specific_issue:
+        lines.append(f"Specific Issue:\n{specific_issue}")
+    elif reason:
+        lines.append(f"Reason: {reason}")
+
+    return "\n".join(lines)
+
+
 def _call_nova_communication(incident: dict, estimated_users: int) -> str:
     """Use Nova 2 Lite to generate a human-readable Slack war-room brief."""
     bedrock = boto3.client("bedrock-runtime", region_name=AWS_REGION)
@@ -149,15 +168,25 @@ def _call_nova_communication(incident: dict, estimated_users: int) -> str:
     trigger_context = ""
     if alert_source == "GitHub" and head_commit:
         trigger_context = (
-            f"\nTRIGGERING COMMIT: {head_commit.get('id', '')} "
-            f"by {head_commit.get('author', 'unknown')}: "
+            f"\nTRIGGERING COMMIT: {head_commit.get('id', '')[:8]} "
+            f"by {head_commit.get('author', {}).get('name', 'unknown') if isinstance(head_commit.get('author'), dict) else head_commit.get('author', 'unknown')}: "
             f"\"{head_commit.get('message', '')}\""
         )
 
     # Include specific issue from investigation if available
     specific_issue = ""
     if top_suspect and top_suspect.get("specific_issue"):
-        specific_issue = f"\nSPECIFIC ISSUE FOUND: {top_suspect['specific_issue']}"
+        specific_issue = f"\nSPECIFIC ISSUE FOUND:\n{top_suspect['specific_issue']}"
+
+    # Format suspect commit cleanly — no raw JSON
+    suspect_formatted = _format_suspect_commit(top_suspect)
+
+    # Format runbook cleanly
+    runbook_formatted = "None found"
+    if top_runbook:
+        runbook_formatted = (
+            f"First Action Step: {top_runbook.get('first_action_step', 'See runbook')}"
+        )
 
     system_prompt = """You are an SRE bot generating a production incident war-room brief for Slack.
 Write in a clear, urgent, professional tone. Be concise — engineers are under pressure.
@@ -165,8 +194,8 @@ Write in a clear, urgent, professional tone. Be concise — engineers are under 
 CRITICAL SLACK FORMATTING RULES:
 - Bold text: *single asterisks* — NEVER use **double asterisks**
 - Code: `backticks`
-- NEVER use ## markdown headers — use *SECTION TITLE* style instead
-- Bullet points: use • or -
+- NEVER use ## markdown headers — use *SECTION TITLE:* style instead
+- Bullet points: use -
 
 Respond with ONLY the Slack message text, nothing else."""
 
@@ -179,20 +208,23 @@ BLAST RADIUS: {', '.join(blast_radius)}
 ESTIMATED USERS AFFECTED: ~{estimated_users:,}
 TRIAGE SUMMARY: {triage_summary}{trigger_context}{specific_issue}
 
-TOP SUSPECT COMMIT: {json.dumps(top_suspect, default=str) if top_suspect else 'None identified'}
-TOP RUNBOOK MATCH: {json.dumps(top_runbook, default=str) if top_runbook else 'None found'}
+TOP SUSPECT COMMIT:
+{suspect_formatted}
+
+TOP RUNBOOK MATCH:
+{runbook_formatted}
 
 The message MUST include:
 1. A severity header with emoji (🔴 HIGH / 🟡 MED / 🟢 LOW)
 2. Repo + blast radius
 3. Estimated user impact (~{estimated_users:,} users)
-4. Top suspect commit with specific issue if available (cite actual code problem, not just filename)
-5. First action step from runbook (if available)
-6. 2-3 immediate action items
-7. "Reply to this thread with updates"
+4. Triggering commit hash and author
+5. Specific issue found — cite the actual lines and what they do wrong
+6. First action step from runbook (if available)
+7. 2-3 immediate action items
+8. "Reply to this thread with updates."
 
-Keep it under 300 words. Make it scannable.
-Remember: use *single asterisks* for bold, NEVER **double asterisks**."""
+Keep it under 300 words. Make it scannable. Do NOT output raw JSON anywhere."""
 
     response = bedrock.invoke_model(
         modelId=NOVA_LITE_MODEL,
@@ -212,6 +244,8 @@ Remember: use *single asterisks* for bold, NEVER **double asterisks**."""
 
     # Post-process: strip any **double asterisks** that snuck through
     raw = re.sub(r"\*\*(.+?)\*\*", r"*\1*", raw)
+    # Post-process: strip any raw JSON-looking blobs that snuck through
+    raw = re.sub(r'\{["\']reason["\'].*?\}', "", raw, flags=re.DOTALL)
 
     return raw
 
