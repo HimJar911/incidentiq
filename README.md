@@ -8,8 +8,6 @@
 
 ---
 
----
-
 ## Built With
 
 - **Amazon Nova** (Lite, Pro, Multimodal Embeddings) via Amazon Bedrock
