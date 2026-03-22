@@ -8,6 +8,21 @@
 
 ---
 
+---
+
+## Built With
+
+- **Amazon Nova** (Lite, Pro, Multimodal Embeddings) via Amazon Bedrock
+- **Amazon Bedrock Knowledge Bases** — semantic runbook search
+- **AWS ECS Fargate** — containerized backend
+- **AWS DynamoDB** — incident and repo state
+- **AWS S3** — runbook storage
+- **FastAPI** — backend API
+- **React + Vite** — frontend dashboard
+- **Vercel** — frontend hosting
+
+---
+
 ## What It Does
 
 Most incident response looks like this: an alert fires, an engineer gets paged at 2am, spends 20 minutes figuring out what broke and how bad it is, then another 30 minutes writing a postmortem from memory. IncidentIQ eliminates every one of those steps.
@@ -196,19 +211,6 @@ IncidentIQ runs for pennies per incident. Nova Lite calls (push filter, triage) 
 - PagerDuty integration for automated escalation
 - Mobile push notifications for war room alerts
 
----
 
-## Built With
-
-- **Amazon Nova** (Lite, Pro, Multimodal Embeddings) via Amazon Bedrock
-- **Amazon Bedrock Knowledge Bases** — semantic runbook search
-- **AWS ECS Fargate** — containerized backend
-- **AWS DynamoDB** — incident and repo state
-- **AWS S3** — runbook storage
-- **FastAPI** — backend API
-- **React + Vite** — frontend dashboard
-- **Vercel** — frontend hosting
-
----
 
 *IncidentIQ — The on-call engineer who never sleeps.*
